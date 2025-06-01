@@ -64,13 +64,17 @@ public class AuthFilter implements GlobalFilter, Ordered {
 			return chain.filter(exchange);
 		}
 		ServerHttpResponse resp = exchange.getResponse();
-		String headerToken = exchange.getRequest().getHeaders().getFirst(AuthProvider.AUTH_KEY);
-		String paramToken = exchange.getRequest().getQueryParams().getFirst(AuthProvider.AUTH_KEY);
-		if (StringUtils.isBlank(headerToken) && StringUtils.isBlank(paramToken)) {
-			return unAuth(resp, "缺失令牌,鉴权失败");
-		}
-		String auth = StringUtils.isBlank(headerToken) ? paramToken : headerToken;
-		String token = JwtUtil.getToken(auth);
+                String headerToken = exchange.getRequest().getHeaders().getFirst(AuthProvider.AUTH_KEY);
+                String paramToken = exchange.getRequest().getQueryParams().getFirst(AuthProvider.AUTH_KEY);
+                String cookieToken = null;
+                if (exchange.getRequest().getCookies().containsKey(AuthProvider.AUTH_KEY)) {
+                        cookieToken = exchange.getRequest().getCookies().getFirst(AuthProvider.AUTH_KEY).getValue();
+                }
+                if (StringUtils.isBlank(headerToken) && StringUtils.isBlank(paramToken) && StringUtils.isBlank(cookieToken)) {
+                        return unAuth(resp, "缺失令牌,鉴权失败");
+                }
+                String auth = StringUtils.isBlank(headerToken) ? (StringUtils.isBlank(paramToken) ? cookieToken : paramToken) : headerToken;
+                String token = JwtUtil.getToken(auth);
 		//校验 加密Token 合法性
 		if (JwtUtil.isCrypto(auth)) {
 			token = JwtCrypto.decryptToString(token, bladeProperties.getEnvironment().getProperty(BLADE_CRYPTO_AES_KEY));
