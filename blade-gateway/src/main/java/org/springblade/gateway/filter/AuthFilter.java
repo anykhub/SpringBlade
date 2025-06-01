@@ -35,6 +35,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -52,10 +53,12 @@ import static org.springblade.gateway.utils.JwtCrypto.BLADE_CRYPTO_AES_KEY;
 @Component
 @AllArgsConstructor
 public class AuthFilter implements GlobalFilter, Ordered {
-	private final AuthProperties authProperties;
-	private final ObjectMapper objectMapper;
-	private final BladeProperties bladeProperties;
-	private final AntPathMatcher antPathMatcher = new AntPathMatcher();
+        private final AuthProperties authProperties;
+        private final ObjectMapper objectMapper;
+        private final BladeProperties bladeProperties;
+        @Value("${sso.cookie-name:Blade-Auth}")
+        private String cookieName;
+        private final AntPathMatcher antPathMatcher = new AntPathMatcher();
 
 	@Override
 	public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -64,13 +67,17 @@ public class AuthFilter implements GlobalFilter, Ordered {
 			return chain.filter(exchange);
 		}
 		ServerHttpResponse resp = exchange.getResponse();
-		String headerToken = exchange.getRequest().getHeaders().getFirst(AuthProvider.AUTH_KEY);
-		String paramToken = exchange.getRequest().getQueryParams().getFirst(AuthProvider.AUTH_KEY);
-		if (StringUtils.isBlank(headerToken) && StringUtils.isBlank(paramToken)) {
-			return unAuth(resp, "缺失令牌,鉴权失败");
-		}
-		String auth = StringUtils.isBlank(headerToken) ? paramToken : headerToken;
-		String token = JwtUtil.getToken(auth);
+                String headerToken = exchange.getRequest().getHeaders().getFirst(AuthProvider.AUTH_KEY);
+                String paramToken = exchange.getRequest().getQueryParams().getFirst(AuthProvider.AUTH_KEY);
+                String cookieToken = null;
+                if (exchange.getRequest().getCookies().containsKey(cookieName)) {
+                        cookieToken = exchange.getRequest().getCookies().getFirst(cookieName).getValue();
+                }
+                if (StringUtils.isBlank(headerToken) && StringUtils.isBlank(paramToken) && StringUtils.isBlank(cookieToken)) {
+                        return unAuth(resp, "缺失令牌,鉴权失败");
+                }
+                String auth = StringUtils.isBlank(headerToken) ? (StringUtils.isBlank(paramToken) ? cookieToken : paramToken) : headerToken;
+                String token = JwtUtil.getToken(auth);
 		//校验 加密Token 合法性
 		if (JwtUtil.isCrypto(auth)) {
 			token = JwtCrypto.decryptToString(token, bladeProperties.getEnvironment().getProperty(BLADE_CRYPTO_AES_KEY));
