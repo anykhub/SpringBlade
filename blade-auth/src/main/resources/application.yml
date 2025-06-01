@@ -21,3 +21,6 @@ social:
       client-id: 233************
       client-secret: 233************************************
       redirect-uri: ${social.domain}/oauth/redirect/dingtalk
+sso:
+  cookie-name: Blade-Auth
+  cookie-domain: localhost

@@ -14,3 +14,6 @@ knife4j:
         - blade-admin
         - blade-gateway
         - blade-log
+
+sso:
+  cookie-name: Blade-Auth
