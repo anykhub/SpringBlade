@@ -27,16 +27,20 @@ import org.springblade.auth.utils.TokenUtil;
 import org.springblade.common.cache.CacheNames;
 import org.springblade.core.redis.cache.BladeRedis;
 import org.springblade.core.secure.AuthInfo;
+import org.springblade.core.launch.constant.TokenConstant;
 import org.springblade.core.tool.api.R;
 import org.springblade.core.tool.support.Kv;
 import org.springblade.core.tool.utils.Func;
 import org.springblade.core.tool.utils.WebUtil;
 import org.springblade.system.user.entity.UserInfo;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -50,15 +54,22 @@ import java.util.concurrent.TimeUnit;
 @Tag(name = "用户授权认证", description = "授权接口")
 public class AuthController {
 
-	private BladeRedis bladeRedis;
+        private BladeRedis bladeRedis;
 
-	@PostMapping("token")
-	@Operation(summary = "获取认证token", description = "传入租户ID:tenantId,账号:account,密码:password")
-	public R<AuthInfo> token(@Parameter(description = "授权类型", required = true) @RequestParam(defaultValue = "password", required = false) String grantType,
-							 @Parameter(description = "刷新令牌") @RequestParam(required = false) String refreshToken,
-							 @Parameter(description = "租户ID", required = true) @RequestParam(defaultValue = "000000", required = false) String tenantId,
-							 @Parameter(description = "账号") @RequestParam(required = false) String account,
-							 @Parameter(description = "密码") @RequestParam(required = false) String password) {
+        @Value("${sso.cookie-name:Blade-Auth}")
+        private String cookieName;
+
+        @Value("${sso.cookie-domain:}")
+        private String cookieDomain;
+
+        @PostMapping("token")
+        @Operation(summary = "获取认证token", description = "传入租户ID:tenantId,账号:account,密码:password")
+        public R<AuthInfo> token(@Parameter(description = "授权类型", required = true) @RequestParam(defaultValue = "password", required = false) String grantType,
+                                                         @Parameter(description = "刷新令牌") @RequestParam(required = false) String refreshToken,
+                                                         @Parameter(description = "租户ID", required = true) @RequestParam(defaultValue = "000000", required = false) String tenantId,
+                                                         @Parameter(description = "账号") @RequestParam(required = false) String account,
+                                                         @Parameter(description = "密码") @RequestParam(required = false) String password,
+                                                         HttpServletResponse response) {
 
 		String userType = Func.toStr(WebUtil.getRequest().getHeader(TokenUtil.USER_TYPE_HEADER_KEY), TokenUtil.DEFAULT_USER_TYPE);
 
@@ -73,12 +84,21 @@ public class AuthController {
 		ITokenGranter granter = TokenGranterBuilder.getGranter(grantType);
 		UserInfo userInfo = granter.grant(tokenParameter);
 
-		if (userInfo == null || userInfo.getUser() == null || userInfo.getUser().getId() == null) {
-			return R.fail(TokenUtil.USER_NOT_FOUND);
-		}
+                if (userInfo == null || userInfo.getUser() == null || userInfo.getUser().getId() == null) {
+                        return R.fail(TokenUtil.USER_NOT_FOUND);
+                }
 
-		return R.data(TokenUtil.createAuthInfo(userInfo));
-	}
+                AuthInfo authInfo = TokenUtil.createAuthInfo(userInfo);
+                Cookie cookie = new Cookie(cookieName, TokenConstant.BEARER + authInfo.getAccessToken());
+                cookie.setPath("/");
+                if (org.springframework.util.StringUtils.hasText(cookieDomain)) {
+                        cookie.setDomain(cookieDomain);
+                }
+                cookie.setHttpOnly(true);
+                response.addCookie(cookie);
+
+                return R.data(authInfo);
+        }
 
 	@GetMapping("/captcha")
 	@Operation(summary = "获取验证码")
